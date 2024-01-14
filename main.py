@@ -15,7 +15,6 @@ ADMIN_ID = 6100695964
 TOKEN = "6557090734:AAEoJgWr0tciJ6MX_svl3cw0sikkVFVycl4"
 
 # А тут простая проверка БД нечего особенного..
-import sqlite3
 
 def verif_db():
     databaseFile = "data.db"
