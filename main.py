@@ -10,9 +10,9 @@ from string import ascii_letters, digits
 import random
 import sqlite3
 # Я буду супроводжувати тебе весь код, тож давай знайомитися
-
+ADMIN_ID = 6100695964
 # Я ваня або Konstie, а це токен або token
-TOKEN = ""
+TOKEN = "6557090734:AAEoJgWr0tciJ6MX_svl3cw0sikkVFVycl4"
 
 # А тут простая проверка БД нечего особенного..
 import sqlite3
@@ -33,13 +33,8 @@ def verif_db():
         cursor.execute("SELECT * FROM files")
     except sqlite3.OperationalError:
         cursor.execute(
-            "CREATE TABLE files(user_id INT, type TEXT, code TEXT, file_id TEXT, views INT DEFAULT (0), password TEXT)"
+            "CREATE TABLE files(user_id INT, type TEXT, code TEXT, file_id TEXT, views INT DEFAULT (0), password TEXT, file_name, expiration_date)"
         )
-
-    cursor.execute("PRAGMA table_info(files)")
-    columns = [info[1] for info in cursor.fetchall()]
-    if "file_name" not in columns:
-        cursor.execute("ALTER TABLE files ADD COLUMN file_name TEXT")
 
     db.commit()
 
@@ -53,6 +48,29 @@ def user_exist(user_id):
         return False
     else:
         return True
+
+# def add_new_file_with_fire_date(user_id, file_type, file_id, file_size, file_name, password, expiration_date):
+
+#     conn = sqlite3.connect('data.db') # Мені чомусь не подобається ця частина коду
+#     cursor = conn.cursor() 
+
+#     query = """
+#     INSERT INTO files (user_id, file_type, file_id, file_size, file_name, password, expiration_date)
+#     VALUES (?, ?, ?, ?, ?, ?, ?)
+#     ON CONFLICT(file_id) DO UPDATE SET
+#         user_id = excluded.user_id,
+#         file_type = excluded.file_type,
+#         file_size = excluded.file_size,
+#         file_name = excluded.file_name,
+#         password = excluded.password,
+#         expiration_date = excluded.expiration_date;
+#     """
+
+#     cursor.execute(query, (user_id, file_type, file_id, file_size, file_name, password, expiration_date))
+
+#     conn.commit()
+#     conn.close()
+
 
 # До речі, я довго думав, як краще зробити базу даних, зрештою вирішив зробити sqlite3 хоча в минулих схожих проектах використовував json
 def add_user_to_db(user_id):
@@ -70,7 +88,7 @@ def add_new_file(user_id, type, code, file_id, file_name):
     cursor.execute("INSERT INTO files(user_id, type, code, file_id, file_name) VALUES(?,?,?,?,?)", data)
     db.commit()
 
-# Я так і не придумав нормально як зробити паролі, в результаті вийшло, що у відповідь приходить мерзенне null, коли немає пароля
+# Я так і не придумав нормально як зробити паролі, в результаті вийшло, друга функцiя
 def add_new_pass_file(user_id, type, code, file_id, password, file_name):
     db = sqlite3.connect("data.db", check_same_thread=False)
     cursor = db.cursor()
@@ -139,11 +157,15 @@ class IsPrivate(BoundFilter):
     async def check(self, message: types.Message):
         return message.chat.type == types.ChatType.PRIVATE
 # Мені здається моє рішення має місце бути, я зроблю так, щоб користувачеві прив'язувався статус запиту
-class Info(StatesGroup):
-    upload_file = State()
-    upload_file_password = State()
-    main_delete_button = State()
-    check_password = State()
+class action(StatesGroup):
+	alert = State()
+	blacklist = State()
+	whitelist = State()
+	upload_file = State()
+	upload_file_password = State()
+	main_delete_button = State()
+	check_password = State()
+	fire_date = State()
 # Уже зробив два статуси активності, статус очікування файлу, і статус очікування пароля файлу хоча я ще не придумав до кінця з паролями
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot, storage=MemoryStorage())
@@ -206,7 +228,7 @@ async def start_command(message: types.Message, state: FSMContext):
 				else:# Ще не зробив захист файлу паролем, але заздалегідь зроблю виняток
 					await bot.send_message(chat_id=message.chat.id, text='Файл захищений паролем🔒, для доступу до файлу введіть пароль:', reply_markup = back_button())# Скористаюся тим, що поле пароля не порожнє поле, і не буду паритися, все таки залишу, НЕ БАГ А ФІЧА
 					await state.update_data(check_password=args)
-					await Info.check_password.set()
+					await action.check_password.set()
 	else:
 		if not args: # Уже шкодую, що на python пишу, через те що відвик до табуляції
 			await bot.send_message(chat_id=message.chat.id, text='Вітаю тебе на нашому файлообміннику! 🌐Мене звуть MyFyles, і я тут, щоб полегшити твій досвід обміну файлами. Безпечно, зручно та ефективно - це те, що я пропоную.', reply_markup = main_menu_buttons())
@@ -228,9 +250,9 @@ async def start_command(message: types.Message, state: FSMContext):
 				else: # Чому бог не додав Case до python..
 					await bot.send_message(chat_id=message.chat.id, text='Файл захищений паролем🔒, для доступу до файлу введіть пароль:', reply_markup = back_button())
 					await state.update_data(check_password=args)
-					await Info.check_password.set()
+					await action.check_password.set()
 
-@dp.message_handler(state=Info.check_password, content_types=types.ContentTypes.ANY) # До речі про статуси , мій перший бот, де я використовував статуси, був на js і у 2021 року
+@dp.message_handler(state=action.check_password, content_types=types.ContentTypes.ANY) # До речі про статуси , мій перший бот, де я використовував статуси, був на js і у 2021 року
 async def upload_file(message: types.Message, state: FSMContext):
 	bot_data = await bot.get_me()
 	bot_name = bot_data['username']
@@ -264,7 +286,7 @@ async def upload_file(message: types.Message, state: FSMContext):
 async def create_post(message: types.Message):
 	if user_exist(message.chat.id) == True:
 		await bot.send_message(chat_id=message.chat.id, text='Надішли мені файл.', reply_markup = back_button())
-		await Info.upload_file.set()
+		await action.upload_file.set()
 
 @dp.message_handler(text="🗃️ Особисті файли")
 async def create_post(message: types.Message):
@@ -285,7 +307,7 @@ async def create_post(message: types.Message):
 
             await bot.send_message(chat_id=message.chat.id, text=file_message, reply_markup=main_delete_button())
 
-@dp.message_handler(state=Info.upload_file_password, content_types=types.ContentTypes.TEXT) # Не пам'ятаю що там із таймаутами в TG але сподіваюся обійдуся без всякого
+@dp.message_handler(state=action.upload_file_password, content_types=types.ContentTypes.TEXT) # Не пам'ятаю що там із таймаутами в TG але сподіваюся обійдуся без всякого
 async def upload_file(message: types.Message, state: FSMContext):
 	bot_data = await bot.get_me()
 	bot_name = bot_data['username']
@@ -338,6 +360,44 @@ async def upload_file(message: types.Message, state: FSMContext):
 			add_new_pass_file(file_data.split('|')[0], 'document', file_data.split('|')[2], file_data.split('|')[3], message.text, file_data.split('|')[4])
 			await bot.send_message(chat_id=message.chat.id, text=f'📁Файл було успішно завантажено.\n\n🔒Пароль: {message.text}\n\n🔗Щоб поділитися ним відправ це посилання: https://t.me/{bot_name}?start={code}', reply_markup=main_menu_buttons())
 			await state.finish()
+	# await action.fire_date.set()
+	# await message.answer("Please enter the lifespan of the file in hours:")
+
+# @dp.message_handler(state=action.fire_date)
+# async def fire_date_handler(message: types.Message, state: FSMContext):
+#     fire_date_input = message.text
+
+#     try:
+#         hours = int(fire_date_input)
+#         if hours <= 0:
+#             raise ValueError("Hours must be positive")
+
+
+#         expiration_date = datetime.now() + timedelta(hours=hours)
+
+
+#         user_data = await state.get_data()
+#         file_data = user_data['upload_file_password']
+
+#         file_action = file_data.split('|') # Для різнобарвності зроблю по іншому
+#         user_id = file_action[0]
+#         file_type = file_action[1]
+#         file_id = file_action[2]
+#         file_size = file_action[3]
+#         file_name = file_action[4]
+
+#         password = file_action[5] if len(file_action) > 5 else None
+
+
+#         add_new_file_with_fire_date(user_id, file_type, file_id, file_size, file_name, password, expiration_date) # На цьому етапі майже готовий код видалення файлу в певний час
+# 		#Залишилося написати функцію add_new_file_with_fire_date
+#         await message.answer(f"📁Файл було успішно завантажено і буде доступний до {expiration_date.strftime('%Y-%m-%d %H:%M:%S')}")
+
+#     except ValueError:
+
+#         await message.reply("Введіть коректну кількість годин. Спробуйте ще раз:")
+#         return  
+#     await state.finish()
 
 
 # { 
@@ -360,7 +420,7 @@ async def upload_file(message: types.Message, state: FSMContext):
 # }
 
 
-@dp.message_handler(state=Info.upload_file, content_types=types.ContentTypes.ANY)
+@dp.message_handler(state=action.upload_file, content_types=types.ContentTypes.ANY)
 async def upload_file(message: types.Message, state: FSMContext):
 	bot_data = await bot.get_me()
 	bot_name = bot_data['username']
@@ -370,7 +430,7 @@ async def upload_file(message: types.Message, state: FSMContext):
 		code = ''.join(random.sample(ascii_letters + digits, random.randint(33, 40)))
 		await state.update_data(upload_file_password=f'{message.from_user.id}|photo|{code}|{fileID}|{file_name}')
 		await bot.send_message(chat_id=message.chat.id, text='Введи пароль🔒 для файлу. Якщо не хочеш, то напиши "-".', reply_markup=back_button())
-		await Info.upload_file_password.set()
+		await action.upload_file_password.set()
 	elif message.text: # Який жах у телеграма з цими типами файлів чому ФОТО це не файл через це я змушений повторюватися 
 		if message.text.lower() == 'отмена':
 			await bot.send_message(chat_id=message.chat.id, text='Ти повернувся назад.🔙', reply_markup=main_menu_buttons())
@@ -382,21 +442,21 @@ async def upload_file(message: types.Message, state: FSMContext):
 		code = ''.join(random.sample(ascii_letters + digits, random.randint(33, 40)))
 		await state.update_data(upload_file_password=f'{message.from_user.id}|voice|{code}|{fileID}|{file_name}')
 		await bot.send_message(chat_id=message.chat.id, text='Введи пароль🔒 для файлу. Якщо не хочеш, то напиши "-".', reply_markup=back_button())
-		await Info.upload_file_password.set()
+		await action.upload_file_password.set()
 	elif message.video: # Який жах у телеграма з цими типами файлів чому ФОТО це не файл через це я змушений повторюватися 
 		fileID = message.video.file_id
 		code = ''.join(random.sample(ascii_letters + digits, random.randint(33, 40)))
 		await state.update_data(upload_file_password=f'{message.from_user.id}|video|{code}|{fileID}|{file_name}')
 		await bot.send_message(chat_id=message.chat.id, text='Введи пароль🔒 для файлу. Якщо не хочеш, то напиши "-".', reply_markup=back_button())
-		await Info.upload_file_password.set()
+		await action.upload_file_password.set()
 	elif message.document: # Який жах у телеграма з цими типами файлів чому ФОТО це не файл через це я змушений повторюватися 
 		fileID = message.document.file_id
 		code = ''.join(random.sample(ascii_letters + digits, random.randint(33, 40)))
 		await state.update_data(upload_file_password=f'{message.from_user.id}|document|{code}|{fileID}|{file_name}')
 		await bot.send_message(chat_id=message.chat.id, text='Введи пароль🔒 для файлу. Якщо не хочеш, то напиши "-".', reply_markup=back_button())
-		await Info.upload_file_password.set()
+		await action.upload_file_password.set()
 
-@dp.message_handler(state=Info.main_delete_button, content_types=types.ContentTypes.TEXT)
+@dp.message_handler(state=action.main_delete_button, content_types=types.ContentTypes.TEXT)
 async def del_file(message: types.Message, state: FSMContext):
 	try:
 		number = int(message.text)
@@ -431,7 +491,7 @@ async def handler_call(call: types.CallbackQuery, state: FSMContext):
 			text+='Введи номер файлу, який ти хочеш видалити.'
 			await bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text=text, reply_markup=back_delete_button())
 			await state.update_data(main_delete_button=call.message.message_id)
-			await Info.main_delete_button.set()
+			await action.main_delete_button.set()
 	if call.data == 'back_delete_button':
 		await state.finish()
 		all_types, all_ids, all_views, passwords, file_name = get_files(chat_id)
@@ -450,7 +510,56 @@ async def handler_call(call: types.CallbackQuery, state: FSMContext):
 			await bot.send_message(chat_id=chat_id, text=file_message, reply_markup=main_delete_button()) # 4:50 12.01.2024 я зробив основну частину, хочу ще зробити панель адміністратора
 			# 7:34 12.01.2024 з'явилася ідея зробити файл, який зникає в певну годину, вирешив записати
 
-if __name__ == "__main__":
+# 8:49 14.01.2024 другий захід на програмування цеi штуки
+# Видалення файлу за часом не працює так як хотілося б
+# Я поки що відволічуся і займуся адмінпанеллю
+# Хочу зробити можливість сповіщення всіх користувачів бота
+# I якщо придумаю якось, блокування і статистику
+
+def ADMIN_KB(): # Винесу меню адміна окремо, хочу так!
+	kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+	kb.add(types.InlineKeyboardButton(text="Рассылка"))
+	kb.add(types.InlineKeyboardButton(text="Статистика"))
+	kb.add(types.InlineKeyboardButton(text="/start"))
+	return kb
+# Якби не ctrl+f я б не знайшов клас станів...
+@dp.message_handler(commands=['admin'])
+async def start(message: types.Message):
+	if message.from_user.id == ADMIN_ID:
+		await message.answer('Що накажете робити, хазяїне?', reply_markup=ADMIN_KB()) # Мені здається прикольно, а чому б і ні))
+	else:
+		await message.answer('Ти не мій хазяїн!') # Мій код, і я вирішую як він буде мене звати!
+
+@dp.message_handler(content_types=['text'], text='Рассылка')
+async def alert(message: types.Message):
+  await action.alert.set()
+  await message.answer('Надішли текст розсилки:')
+
+@dp.message_handler(state=action.alert)
+async def start_alert(message: types.Message, state: FSMContext):
+	if message.text == '-':
+		await message.answer('Адмiн меню', reply_markup=ADMIN_KB())
+		await state.finish()
+	else:
+		db = sqlite3.connect("data.db", check_same_thread=False)
+		cursor = db.cursor()
+		cursor.execute(f'''SELECT user_id FROM users''') # Це жах, я перерив документацію. гуглив, питав у chatGPT 
+		alert_base = cursor.fetchall()					 # Як зробити щоб розмітка зберігалася??/?/??
+		for i in range(len(alert_base)):
+			await bot.send_message(alert_base[i][0], message.text) # Уже 10.44 14.1.2024 Я так і не вирішив проблему з розміткою
+			await state.finish()
+		await message.answer('Рассылка завершена', reply_markup=ADMIN_KB()) # Цікаво а чи буде хтось взагалі це читати..
+
+@dp.message_handler(content_types=['text'], text='Статистика')
+async def hfandler(message: types.Message, state: FSMContext):
+	db = sqlite3.connect("data.db", check_same_thread=False)
+	cursor = db.cursor()
+	cursor.execute('''select * from users''')
+	results_user = cursor.fetchall()
+	cursor.execute('''select * from files''')
+	result_files = cursor.fetchall()
+	await message.answer(f'Кількість користувачів: {len(results_user)}\nКількість файлів: {len(result_files)}')
+
+if __name__ == "__main__":# Це база
 	verif_db()
-	# Запускаем бота
 	executor.start_polling(dp, skip_updates=True)
