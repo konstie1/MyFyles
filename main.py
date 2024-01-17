@@ -11,41 +11,47 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from string import ascii_letters, digits
 import random
 import sqlite3
+import asyncio
 import cv2
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 import requests
 from PIL import Image, ImageDraw, ImageFont
 import os
+#import json
 #import speech_recognition as sr
-import os
 # Я буду супроводжувати тебе весь код, тож давай знайомитися
+
 ADMIN_ID = 6100695964
+
 # Я ваня або Konstie, а це токен або token
+
 TOKEN = "6557090734:AAEoJgWr0tciJ6MX_svl3cw0sikkVFVycl4"
 
 # А тут простая проверка БД нечего особенного..
 
 def verif_db():
-    databaseFile = "data.db"
-    db = sqlite3.connect(databaseFile, check_same_thread=False)
-    cursor = db.cursor()
+	databaseFile = "data.db"
+	db = sqlite3.connect(databaseFile, check_same_thread=False)
+	cursor = db.cursor()
 
-    try:
-        cursor.execute("SELECT * FROM users")
-    except sqlite3.OperationalError:
-        cursor.execute(
-            "CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT)"
-        )
+	try:
+		cursor.execute("SELECT * FROM users")
 
-    try:
-        cursor.execute("SELECT * FROM files")
-    except sqlite3.OperationalError:
-        cursor.execute(
-            "CREATE TABLE files(user_id INT, type TEXT, code TEXT, file_id TEXT, views INT DEFAULT (0), password TEXT, file_name, file_date)"
-        )
+	except sqlite3.OperationalError:
+		cursor.execute(
+		"CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INT)"
+		)
 
-    db.commit()
+	try:
+		cursor.execute("SELECT * FROM files")
+
+	except sqlite3.OperationalError:
+		cursor.execute(
+		"CREATE TABLE files(user_id INT, type TEXT, code TEXT, file_id TEXT, views INT DEFAULT (0), password TEXT, file_name TEXT, file_date TEXT, fire_date TEXT)"
+		)
+
+	db.commit()
 
 current_date = datetime.now() # Час я думаю потрiбен
 
@@ -54,6 +60,7 @@ def user_exist(user_id):
     db = sqlite3.connect("data.db", check_same_thread=False)
     cursor = db.cursor()
     cursor.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,))
+
     if cursor.fetchone() is None:
         return False
     else:
@@ -84,6 +91,8 @@ def user_exist(user_id):
 #     conn.close()
 
 
+# 17.1.2024
+
 # До речі, я довго думав, як краще зробити базу даних, зрештою вирішив зробити sqlite3 хоча в минулих схожих проектах використовував json
 def add_user_to_db(user_id):
     db = sqlite3.connect("data.db", check_same_thread=False)
@@ -96,8 +105,8 @@ def add_user_to_db(user_id):
 def add_new_file(user_id, type, code, file_id, file_name, file_date):
     db = sqlite3.connect("data.db", check_same_thread=False)
     cursor = db.cursor()
-    data = [user_id, type, code, file_id, file_name, file_date]
-    cursor.execute("INSERT INTO files(user_id, type, code, file_id, file_name, filedate) VALUES(?,?,?,?,?,?)", data)
+    data = [user_id, type, code, file_id, file_name, file_date, None]  
+    cursor.execute("INSERT INTO files(user_id, type, code, file_id, file_name, file_date, fire_date) VALUES(?,?,?,?,?,?,?)", data)
     db.commit()
 
 
@@ -120,8 +129,8 @@ def add_new_file(user_id, type, code, file_id, file_name, file_date):
 def add_new_pass_file(user_id, type, code, file_id, password, file_name, file_date):
     db = sqlite3.connect("data.db", check_same_thread=False)
     cursor = db.cursor()
-    data = [user_id, type, code, file_id, password, file_name, file_date]
-    cursor.execute("INSERT INTO files(user_id, type, code, file_id, password, file_name, file_date) VALUES(?,?,?,?,?,?,?)", data)
+    data = [user_id, type, code, file_id, password, file_name, file_date, None]  # Include 'None' for 'fire_date'
+    cursor.execute("INSERT INTO files(user_id, type, code, file_id, password, file_name, file_date, fire_date) VALUES(?,?,?,?,?,?,?,?)", data)
     db.commit()
 
 # Отримання файлу теж стандартне, хоча я мені здається щось перемудрив з return
@@ -165,7 +174,10 @@ def get_files(user_id):
 	cursor.execute("SELECT file_date FROM files WHERE user_id=?", (user_id,))
 	file_date = cursor.fetchall()
 
-	return types_my_file, fileIDs, views, passwords, file_names, file_date
+	cursor.execute("SELECT fire_date FROM files WHERE user_id=?", (user_id,))
+	fire_date = cursor.fetchall()
+
+	return types_my_file, fileIDs, views, passwords, file_names, file_date, fire_date
 
 
 
@@ -213,10 +225,25 @@ async def blur_image(image_path):
 
 # І побачив те, що в інших немає лічильника скачувань, я думаю, можна щось подібне реалізувати
 def delete_file(code):
+	db = sqlite3.connect("data.db", check_same_thread=False)
+	cursor = db.cursor()
+	cursor.execute("DELETE FROM files WHERE code = ?", (code,))
+	db.commit()
+
+async def main_fire_date_button(code, fire_date_hours):
     db = sqlite3.connect("data.db", check_same_thread=False)
     cursor = db.cursor()
-    cursor.execute("DELETE FROM files WHERE code = ?", (code,))
-    db.commit()
+
+    fire_date = datetime.now() + timedelta(hours=fire_date_hours)
+
+    try:
+        fire_date_str = fire_date.strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("""UPDATE files SET fire_date = ? WHERE code = ?""", (fire_date_str, code))
+        db.commit()
+    except sqlite3.Error as e:
+        print(f"Помилка при оновленні fire_date: {e}")
+    finally:
+        db.close()
 
 # Я бачив різне розв'язання проблеми те що tgAPI не дає для конкретного юзера програми обробляти конкретним алгоритмом 
 class IsPrivate(BoundFilter):
@@ -227,6 +254,7 @@ class action(StatesGroup):
 	alert = State() 
 	# Смішна ідея є зробити блок юзера не через ЧС
 	# А через статус))
+	main_fire_date_button = State()
 	upload_file = State()
 	upload_file_password = State()
 	main_delete_button = State()
@@ -252,6 +280,7 @@ def back_button():
 	back_button1.add(button1)
 	return back_button1
 
+
 # # def preview_button(): # Вирішив додати попередній перегляд для запоролених файлів
 # # 	InlineKeyboardButton('👀Предперегляд')
 	
@@ -265,12 +294,16 @@ def main_delete_button():
 	markup = InlineKeyboardMarkup()
 	btn2 = InlineKeyboardButton(text='🧺Видалити файл', callback_data=f'main_delete_button')
 	markup.add(btn2)
+	btn3 = InlineKeyboardButton(text='⏲Таймер файлу', callback_data=f'main_fire_date_button')
+	markup.add(btn3)
 	return markup
+
 	
 def get_file_size(file_path):
     try:
         size_in_bytes = os.path.getsize(file_path)
-        return size_in_bytes / (1024 ** 3)  # Convert bytes to gigabytes
+        return round(size_in_bytes / (1024 ** 3), 3)  # Convert bytes to gigabytes
+	
     except OSError as e:
         print(f"Error: {e}")
         return None
@@ -281,6 +314,7 @@ def virus_total_check(file_path, api_key='68174e55354b900b581848997b2b66d5e948b2
 
     files = {'file': (file_path, open(file_path, 'rb'))}
     response = requests.post(url, files=files, params=params)
+
     if response.status_code != 200:
         return "Ошибка при сканировании файла"
 
@@ -291,6 +325,7 @@ def virus_total_check(file_path, api_key='68174e55354b900b581848997b2b66d5e948b2
     params_report = {'apikey': api_key, 'resource': resource}
 
     report_response = requests.get(url_report, params=params_report)
+
     if report_response.status_code != 200:
         return "Ошибка при получении отчета"
 
@@ -348,10 +383,13 @@ async def start_command(message: types.Message, state: FSMContext):
 	args = message.get_args()
 	bot_data = await bot.get_me()
 	bot_name = bot_data['username']
+
 	if user_exist(message.chat.id) == False:
 		add_user_to_db(message.chat.id)
+
 	if not args:
 		await bot.send_message(chat_id=message.chat.id, text=f'Вітаю тебе на нашому файлообміннику! 🌐Мене звуть {bot_name}, і я тут, щоб полегшити твій досвід обміну файлами. Безпечно, зручно та ефективно - це те, що я пропоную.', reply_markup = main_menu_buttons())
+	
 	else:
 		type_file, fileID, views, password, file_name, file_date = get_file(args)
 		if type_file is None and fileID is None:
@@ -361,12 +399,15 @@ async def start_command(message: types.Message, state: FSMContext):
 #			await bot.get_file(fileID[0])
 			# file = await bot.get_file(fileID[0])
 			# await bot.download_file(file.file_path, 'file')
+
 			if password == (None,): # Зробив лічильник відкриття файлу
 				view_updater(args)
+
 				if type_file[0] == 'photo': # Назвав його "перегляди"
 					await bot.send_photo(chat_id=message.chat.id, photo=fileID[0], caption=f'👁 Перегляди: {int(views[0])+1}', reply_markup = main_menu_buttons())
 				
 				elif type_file[0] == 'video':
+
 					await bot.send_video(chat_id=message.chat.id, video=fileID[0], caption=f'👁 Перегляди: {int(views[0])+1}', reply_markup = main_menu_buttons())
 				
 				elif type_file[0] == 'voice':
@@ -374,11 +415,13 @@ async def start_command(message: types.Message, state: FSMContext):
 				
 				elif type_file[0] == 'document':
 					await bot.send_document(chat_id=message.chat.id, document=fileID[0], caption=f'👁 Перегляди: {int(views[0])+1}', reply_markup = main_menu_buttons())
+		
 			else:# Ще не зробив захист файлу паролем, але заздалегідь зроблю виняток
 #				await bot.send_message(chat_id=message.chat.id, text='Тицьніть для попереднього перегляду файлу', reply_markup = KeyboardButton.preview_button())
 #				all_types, all_ids, all_views, passwords, file_name = get_files(message.from_user.id)
 				file_info = await bot.get_file(fileID[0])
 				file_path = file_info.file_path
+
 				if type_file[0] == 'photo': # 15.1.2025 22:26 вирішив зробити попередній перегляд файлу
 					# почав із фото, зроблю просто цензуру фотографії
 					file_save_path = f'assets/temp/{fileID[0]}.png'
@@ -409,7 +452,7 @@ async def start_command(message: types.Message, state: FSMContext):
 					await bot.download_file(file_path, f'assets/temp/{fileID[0]}/{file_name[0]}')
 #					write_on_image(fileid=fileID[0], format_file=file_name[0].spilt('.')[0], file_name=file_name[0].spilt('.')[-1], file_size=get_file_size(f'assets/temp/{fileID[0]}/{file_name[0]}'), virus_total=virus_total_check('assets/temp/{fileID[0]}/{file_name[0]}'), image_path='assets/temp/{fileID[0]}/{file_name[0]}')
 #					print(f'{fileID[0]}, {file_name[0].split('.')[0]}, {file_name[0].split('.')[-1]}, {get_file_size(f'assets/temp/{fileID[0]}/{file_name[0]}')}, {virus_total_check(f'assets/temp/{fileID[0]}/{file_name[0]}')},')
-					await bot.send_message(message.chat.id, text=f'Назва файла: {file_name[0].split('.')[0]}\nТип файла: {file_name[0].split('.')[-1]}\nВага файла: {get_file_size(f'assets/temp/{fileID[0]}/{file_name[0]}')}\nVirusTotal: {virus_total_check(f'assets/temp/{fileID[0]}/{file_name[0]}')}')
+					await bot.send_message(message.chat.id, text=f'Назва файла: {file_name[0].split('.')[0]}\nТип файла: {file_name[0].split('.')[-1]}\nВага файла: {get_file_size(f'assets/temp/{fileID[0]}/{file_name[0]}')}GB\nVirusTotal: {virus_total_check(f'assets/temp/{fileID[0]}/{file_name[0]}')}')
 					os.remove(f'assets/temp/{fileID[0]}/{file_name[0]}')
 					os.removedirs(f'assets/temp/{fileID[0]}')
 
@@ -441,10 +484,13 @@ async def start_command(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=action.check_password, content_types=types.ContentTypes.ANY) # До речі про статуси , мій перший бот, де я використовував статуси, був на js і у 2021 року
 async def upload_file(message: types.Message, state: FSMContext):
+
 	if message.text: 
+
 		if message.text.lower() == 'отмена':
 			await bot.send_message(chat_id=message.chat.id, text='Ви повернулися в головне меню.🏠', reply_markup=main_menu_buttons())
 			await state.finish()
+
 		else:
 			user_data = await state.get_data()
 			code = user_data['check_password']
@@ -452,17 +498,23 @@ async def upload_file(message: types.Message, state: FSMContext):
 
 			if message.text == password[0]:
 				view_updater(code)
+
 				if type_file[0] == 'photo':
 					await bot.send_photo(chat_id=message.chat.id, photo=fileID[0], caption=f'👁 Перегляди: {int(views[0])+1}', reply_markup = main_menu_buttons())
+				
 				elif type_file[0] == 'video':
 					await bot.send_video(chat_id=message.chat.id, video=fileID[0], caption=f'👁 Перегляди: {int(views[0])+1}', reply_markup = main_menu_buttons())
+				
 				elif type_file[0] == 'voice':
 					await bot.send_voice(chat_id=message.chat.id, voice=fileID[0], caption=f'👁 Перегляди: {int(views[0])+1}', reply_markup = main_menu_buttons())
+				
 				elif type_file[0] == 'document':
 					await bot.send_document(chat_id=message.chat.id, document=fileID[0], caption=f'👁 Перегляди: {int(views[0])+1}', reply_markup = main_menu_buttons())
 				await state.finish()
+			
 			else:
 				await bot.send_message(chat_id=message.chat.id, text='😔Упс, це не вірний пароль, спробуй ще раз:', reply_markup = back_button())
+
 	else:
 		await bot.send_message(chat_id=message.chat.id, text='😔Упс, це не вірний пароль, спробуй ще раз:', reply_markup = back_button())
 
@@ -478,16 +530,17 @@ async def create_post(message: types.Message):
     if user_exist(message.chat.id) == True:
         bot_data = await bot.get_me()
         bot_name = bot_data['username']
-        all_types, all_ids, all_views, passwords, file_name, file_date = get_files(message.from_user.id)
+        all_types, all_ids, all_views, passwords, file_name, file_date, fire_date = get_files(message.from_user.id)
 
         if not all_types:
-            await bot.send_message(chat_id=message.chat.id, text='У вас немає завантажених файлів, щоб завантажити файли натисніть "📩 Завантажити файл"', reply_markup=main_menu_buttons())
+            await bot.send_message(chat_id=message.chat.id, text='У вас немає завантажених файлів, щоб завантажити файли натисніть "📩 Завантажити файл"', reply_markup=main_menu_buttons())     
+        
         else:
             file_message = ""
             for i, id_file in enumerate(all_ids):
                 file_message += (
                     f"{i + 1} | https://t.me/{bot_name}?start={id_file[0]} | \n"
-                    f"📁 {file_name[i][0]} | 👁 {all_views[i][0]} | 🔒{passwords[i][0]}\n"
+                    f"📁 {file_name[i][0]} | 👁 {all_views[i][0]} |⏲{fire_date[i][0]} |🔒{passwords[i][0]}\n"
                 )
 
             await bot.send_message(chat_id=message.chat.id, text=file_message, reply_markup=main_delete_button())
@@ -498,48 +551,58 @@ async def upload_file(message: types.Message, state: FSMContext):
 	bot_name = bot_data['username']
 	user_data = await state.get_data()
 	file_data = user_data['upload_file_password']
-	print(file_data.split('|')[5])
+
 	if message.text == '-': # Думав, може, варто зробити кнопкою, а то мене бісить, що треба відкривати клавіатуру
+
 		if file_data.split('|')[1] == 'photo':
 			code = file_data.split('|')[2]
 			add_new_file(file_data.split('|')[0], 'photo', file_data.split('|')[2], file_data.split('|')[3], file_data.split('|')[4], file_data.split('|')[5])
 
 			await bot.send_message(chat_id=message.chat.id, text=f'📁Файл було успішно завантажено.\n\n🔗Щоб поділитися ним відправ це посилання: https://t.me/{bot_name}?start={code}', reply_markup=main_menu_buttons())
 			await state.finish()
+	
 		elif file_data.split('|')[1] == 'video':
 			code = file_data.split('|')[2]
 			add_new_file(file_data.split('|')[0], 'video', file_data.split('|')[2], file_data.split('|')[3], file_data.split('|')[4], file_data.split('|')[5])
 			await bot.send_message(chat_id=message.chat.id, text=f'📁Файл було успішно завантажено.\n\n🔗Щоб поділитися ним відправ це посилання: https://t.me/{bot_name}?start={code}', reply_markup=main_menu_buttons())
 			await state.finish()
+	
 		elif file_data.split('|')[1] == 'voice':
 			code = file_data.split('|')[2]
 			add_new_file(file_data.split('|')[0], 'voice', file_data.split('|')[2], file_data.split('|')[3], file_data.split('|')[4], file_data.split('|')[5])
 			await bot.send_message(chat_id=message.chat.id, text=f'📁Файл було успішно завантажено.\n\n🔗Щоб поділитися ним відправ це посилання: https://t.me/{bot_name}?start={code}', reply_markup=main_menu_buttons())
 			await state.finish()
+	
 		elif file_data.split('|')[1] == 'document':
 			code = file_data.split('|')[2]
 			add_new_file(file_data.split('|')[0], 'document', file_data.split('|')[2], file_data.split('|')[3], file_data.split('|')[4], file_data.split('|')[5])
 			await bot.send_message(chat_id=message.chat.id, text=f'📁Файл було успішно завантажено.\n\n🔗Щоб поділитися ним відправ це посилання: https://t.me/{bot_name}?start={code}', reply_markup=main_menu_buttons())
 			await state.finish()
+	
 	elif message.text.lower() == 'отмена':
 		await bot.send_message(chat_id=message.chat.id, text='Ви повернулися в головне меню.🏠', reply_markup=main_menu_buttons())
 		await state.finish() # Шкода що мені не заплатять за це, бо тієї атмосфери за яку я люблю проограмування не має(
+	
 	else:
+		
 		if file_data.split('|')[1] == 'photo':
 			code = file_data.split('|')[2]
 			add_new_pass_file(file_data.split('|')[0], 'photo', file_data.split('|')[2], file_data.split('|')[3], message.text, file_data.split('|')[4], file_data.split('|')[5])
 			await bot.send_message(chat_id=message.chat.id, text=f'📁Файл було успішно завантажено.\n\n🔒Пароль: {message.text}\n\n🔗Щоб поділитися ним відправ це посилання: https://t.me/{bot_name}?start={code}', reply_markup=main_menu_buttons())
 			await state.finish()
+		
 		elif file_data.split('|')[1] == 'video': # Я ентузіаст у програмуванні, але тільки тоді, коли є особливий вайб
 			code = file_data.split('|')[2]
 			add_new_pass_file(file_data.split('|')[0], 'video', file_data.split('|')[2], file_data.split('|')[3], message.text, file_data.split('|')[4], file_data.split('|')[5])
 			await bot.send_message(chat_id=message.chat.id, text=f'📁Файл було успішно завантажено.\n\n🔒Пароль: {message.text}\n\n🔗Щоб поділитися ним відправ це посилання: https://t.me/{bot_name}?start={code}', reply_markup=main_menu_buttons())
 			await state.finish()
+		
 		elif file_data.split('|')[1] == 'voice':
 			code = file_data.split('|')[2]
 			add_new_pass_file(file_data.split('|')[0], 'voice', file_data.split('|')[2], file_data.split('|')[3], message.text, file_data.split('|')[4], file_data.split('|')[5])
 			await bot.send_message(chat_id=message.chat.id, text=f'📁Файл було успішно завантажено.\n\n🔒Пароль: {message.text}\n\n🔗Щоб поділитися ним відправ це посилання: https://t.me/{bot_name}?start={code}', reply_markup=main_menu_buttons())
 			await state.finish()
+		
 		elif file_data.split('|')[1] == 'document':
 			code = file_data.split('|')[2]
 			add_new_pass_file(file_data.split('|')[0], 'document', file_data.split('|')[2], file_data.split('|')[3], message.text, file_data.split('|')[4], file_data.split('|')[5])
@@ -610,32 +673,38 @@ async def upload_file(message: types.Message, state: FSMContext):
 @dp.message_handler(state=action.upload_file, content_types=types.ContentTypes.ANY)
 async def upload_file(message: types.Message, state: FSMContext):
 	file_name = message.document.file_name if message.document else 'media'
-	file_date = current_date.strftime("%d/%m/%Y")
-	print(file_date)
+	file_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+	
 	if message.photo: # Який жах у телеграма з цими типами файлів чому ФОТО це не файл через це я змушений повторюватися 
 		fileID = message.photo[-1].file_id
 		code = ''.join(random.sample(ascii_letters + digits, random.randint(33, 40)))
 		await state.update_data(upload_file_password=f'{message.from_user.id}|photo|{code}|{fileID}|{file_name}|{file_date}')
 		await bot.send_message(chat_id=message.chat.id, text='Введи пароль🔒 для файлу. Якщо не хочеш, то напиши "-".', reply_markup=back_button())
 		await action.upload_file_password.set()
+	
 	elif message.text: # Який жах у телеграма з цими типами файлів чому ФОТО це не файл через це я змушений повторюватися 
+	
 		if message.text.lower() == 'отмена':
 			await bot.send_message(chat_id=message.chat.id, text='Ти повернувся назад.🔙', reply_markup=main_menu_buttons())
 			await state.finish()
+	
 		else:
 			await bot.send_message(chat_id=message.chat.id, text='Надішли мені файл.', reply_markup=back_button())
+	
 	elif message.voice: # Який жах у телеграма з цими типами файлів чому ФОТО це не файл через це я змушений повторюватися 
 		fileID = message.voice.file_id
 		code = ''.join(random.sample(ascii_letters + digits, random.randint(33, 40)))
 		await state.update_data(upload_file_password=f'{message.from_user.id}|voice|{code}|{fileID}|{file_name}|{file_date}')
 		await bot.send_message(chat_id=message.chat.id, text='Введи пароль🔒 для файлу. Якщо не хочеш, то напиши "-".', reply_markup=back_button())
 		await action.upload_file_password.set()
+	
 	elif message.video: # Який жах у телеграма з цими типами файлів чому ФОТО це не файл через це я змушений повторюватися 
 		fileID = message.video.file_id
 		code = ''.join(random.sample(ascii_letters + digits, random.randint(33, 40)))
 		await state.update_data(upload_file_password=f'{message.from_user.id}|video|{code}|{fileID}|{file_name}|{file_date}')
 		await bot.send_message(chat_id=message.chat.id, text='Введи пароль🔒 для файлу. Якщо не хочеш, то напиши "-".', reply_markup=back_button())
 		await action.upload_file_password.set()
+	
 	elif message.document: # Який жах у телеграма з цими типами файлів чому ФОТО це не файл через це я змушений повторюватися 
 		fileID = message.document.file_id
 		code = ''.join(random.sample(ascii_letters + digits, random.randint(33, 40)))
@@ -645,20 +714,49 @@ async def upload_file(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=action.main_delete_button, content_types=types.ContentTypes.TEXT)
 async def del_file(message: types.Message, state: FSMContext):
+	
 	try:
 		number = int(message.text)
 		user_data = await state.get_data()
 		mess_id = user_data['main_delete_button'] # Все таки роблю окрему кнопку, не зміг придумати як зробити це однією кнопкою
-		all_types, all_ids, all_views, passwords, file_name,file_date = get_files(message.from_user.id)
+		all_types, all_ids, all_views, passwords, file_name,file_date, fire_date = get_files(message.from_user.id)
+
 		if number > len(all_ids):
 			await bot.send_message(chat_id=message.chat.id, text='Такого файлу не існує. Введи номер файлу:', reply_markup=back_delete_button())
+	
 		else:
 			delete_file(all_ids[(number-1)][0]) # У мене з'явилася проблема з id файлу і видаленням файла
 			await bot.delete_message(message.chat.id, mess_id) # Після видалення лічильник id не хоче скидатися 
 			await bot.send_message(chat_id=message.chat.id, text='Ви успішно видалили файл!', reply_markup=main_menu_buttons())
 			await state.finish()
+	
 	except ValueError:
 		await bot.send_message(chat_id=message.chat.id, text='Введи номер файлу:', reply_markup=back_delete_button())
+
+
+@dp.message_handler(state=action.main_fire_date_button, content_types=types.ContentTypes.TEXT)
+async def main_fire_date(message: types.Message, state: FSMContext):
+	
+	try:
+		number, time = map(int, message.text.split('/'))
+		user_data = await state.get_data()
+		mess_id = user_data.get('main_fire_date_button')
+
+		all_types, all_ids, all_views, passwords, file_name, file_date, fire_date = get_files(message.from_user.id)
+
+		if number > len(all_ids):
+			await bot.send_message(chat_id=message.chat.id, text='Такого файлу не існує. Введи номер файлу:', reply_markup=back_delete_button())
+	
+		else:
+			file_id = all_ids[number - 1][0]
+			await main_fire_date_button(file_id, time)
+			await bot.delete_message(message.chat.id, mess_id) 
+			await bot.send_message(chat_id=message.chat.id, text='Дата видалення файлу успішно оновлена', reply_markup=main_menu_buttons())
+			await state.finish()
+	
+	except ValueError:
+		await bot.send_message(chat_id=message.chat.id, text='Введи номер файлу:', reply_markup=back_delete_button())
+
 
 
 @dp.callback_query_handler(state='*')
@@ -666,32 +764,59 @@ async def handler_call(call: types.CallbackQuery, state: FSMContext):
 	bot_data = await bot.get_me()
 	bot_name = bot_data['username']
 	chat_id = call.from_user.id
+	
 	if call.data == 'main_delete_button': # Підтвердження видалення файлу я думаю не буде зайвим
-		all_types, all_ids, all_views, passwords, file_name, file_date = get_files(chat_id)
+		all_types, all_ids, all_views, passwords, file_name, file_date, fire_date = get_files(chat_id)
+	
 		if all_ids == []:
 			await bot.delete_message(chat_id, call.message.message_id)
 			await bot.send_message(chat_id=chat_id, text='У вас немає завантажених файлів, щоб завантажити файли натисніть "📩 Завантажити файл"', reply_markup = main_menu_buttons())
+	
 		else:
 			text='Який файл видаляемо?: \n\n'
+	
 			for i, id_file in enumerate(all_ids):
 				text+=f'{i+1}. https://t.me/{str(bot_name)}?start={id_file[0]} | {file_name[i][0]}\n\n'
+	
 			text+='Введи номер файлу, який ти хочеш видалити.'
 			await bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text=text, reply_markup=back_delete_button())
 			await state.update_data(main_delete_button=call.message.message_id)
 			await action.main_delete_button.set()
+	
+
+
+	if call.data == 'main_fire_date_button':
+		all_types, all_ids, all_views, passwords, file_name, file_date, fire_date = get_files(chat_id)
+	
+		if all_ids == []:
+			await bot.delete_message(chat_id, call.message.message_id)
+			await bot.send_message(chat_id=chat_id, text='У вас немає завантажених файлів, щоб завантажити файли натисніть "📩 Завантажити файл"', reply_markup = main_menu_buttons())
+	
+		else:
+			text='Який файл?: \n\n'
+			for i, id_file in enumerate(all_ids):
+				text+=f'{i+1}. https://t.me/{str(bot_name)}?start={id_file[0]} | {file_name[i][0]}\n\n'
+			text+='Введіть номер файлу для створення таймера, Та час\nФормат НомерФайлу/ЧасУГодинах'
+			await bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text=text, reply_markup=back_delete_button())
+			await state.update_data(main_fire_date_button=call.message.message_id)
+			await action.main_fire_date_button.set()
+
+
 	if call.data == 'back_delete_button':
 		await state.finish()
-		all_types, all_ids, all_views, passwords, file_name, file_date = get_files(chat_id)
+		all_types, all_ids, all_views, passwords, file_name, file_date, fire_date = get_files(chat_id)
+	
 		if all_ids == []: # Взагалі те що я тут написав у цьому рядку маячня, і так краще не робити
 			await bot.delete_message(chat_id, call.message.message_id)
 			await bot.send_message(chat_id=chat_id, text='У вас немає завантажених файлів, щоб завантажити файли натисніть "📩 Завантажити файл"', reply_markup = main_menu_buttons())
+	
 		else:
 
 			for i, id_file in enumerate(all_ids):
 
 				file_message = (
 					f"{i + 1} | https://t.me/{str(bot_name)}?start={id_file[0]} \n"
-					f"📁 {file_name}👁 {all_views[i][0]} | 🔒{passwords[i][0]}"
+					f"📁 {file_name[i][0]}👁 {all_views[i][0]} | 🔒{passwords[i][0]}"
 				) # За ідеєю я повинен був зробити цю частину коду через try але мені тааааак не хочеться 
 
 			await bot.send_message(chat_id=chat_id, text=file_message, reply_markup=main_delete_button()) # 4:50 12.01.2024 я зробив основну частину, хочу ще зробити панель адміністратора
@@ -713,8 +838,10 @@ def ADMIN_KB(): # Винесу меню адміна окремо, хочу та
 # Якби не ctrl+f я б не знайшов клас станів...
 @dp.message_handler(commands=['admin'])
 async def start(message: types.Message):
+	
 	if message.from_user.id == ADMIN_ID:
 		await message.answer('Що накажете робити, хазяїне?', reply_markup=ADMIN_KB()) # Мені здається прикольно, а чому б і ні))
+	
 	else:
 		await message.answer('Ти не мій хазяїн!') # Мій код, і я вирішую як він буде мене звати!
 
@@ -725,14 +852,17 @@ async def alert(message: types.Message):
 
 @dp.message_handler(state=action.alert)
 async def start_alert(message: types.Message, state: FSMContext):
+	
 	if message.text == '-':
 		await message.answer('Адмiн меню', reply_markup=ADMIN_KB())
 		await state.finish()
+	
 	else:
 		db = sqlite3.connect("data.db", check_same_thread=False)
 		cursor = db.cursor()
 		cursor.execute(f'''SELECT user_id FROM users''') # Це жах, я перерив документацію. гуглив, питав у chatGPT 
 		alert_base = cursor.fetchall()					 # Як зробити щоб розмітка зберігалася??/?/??
+		
 		for i in range(len(alert_base)):
 			await bot.send_message(alert_base[i][0], message.text) # Уже 10.44 14.1.2024 Я так і не вирішив проблему з розміткою
 			await state.finish()
@@ -748,6 +878,30 @@ async def hfandler(message: types.Message, state: FSMContext):
 	result_files = cursor.fetchall() # Хоча може варто додати кількість учасників за 24 години
 	await message.answer(f'Кількість користувачів: {len(results_user)}\nКількість файлів: {len(result_files)}') # Я думаю, не варто робити динамічну статистику
 
-if __name__ == "__main__":# Це база
-	verif_db() 
-	executor.start_polling(dp, skip_updates=True) # я не знаю 3x aiogram :/
+async def delete_expired_files():
+    conn = sqlite3.connect('data.db')
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT file_id FROM files WHERE fire_date < ? AND fire_date IS NOT NULL", 
+                       (datetime.now().strftime('%Y-%m-%d %H:%M:%S'),))
+        expired_files = cursor.fetchall()
+		
+        for file in expired_files:
+            cursor.execute("DELETE FROM files WHERE file_id = ?", (file[0],))
+
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        print("Ошибка при работе с базой данных:", e)
+    finally:
+        conn.close()
+
+async def on_startup(dp):
+    asyncio.create_task(delete_expired_files_periodic())
+
+async def delete_expired_files_periodic():
+    while True:
+        await delete_expired_files()
+        await asyncio.sleep(3)  
+if __name__ == "__main__":
+    verif_db()
+    executor.start_polling(dp, on_startup=on_startup, skip_updates=True)
