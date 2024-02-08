@@ -452,7 +452,25 @@ async def start_command(message: types.Message, state: FSMContext):
 					await bot.download_file(file_path, f'assets/temp/{fileID[0]}/{file_name[0]}')
 #					write_on_image(fileid=fileID[0], format_file=file_name[0].spilt('.')[0], file_name=file_name[0].spilt('.')[-1], file_size=get_file_size(f'assets/temp/{fileID[0]}/{file_name[0]}'), virus_total=virus_total_check('assets/temp/{fileID[0]}/{file_name[0]}'), image_path='assets/temp/{fileID[0]}/{file_name[0]}')
 #					print(f'{fileID[0]}, {file_name[0].split('.')[0]}, {file_name[0].split('.')[-1]}, {get_file_size(f'assets/temp/{fileID[0]}/{file_name[0]}')}, {virus_total_check(f'assets/temp/{fileID[0]}/{file_name[0]}')},')
-					await bot.send_message(message.chat.id, text=f'Назва файла: {file_name[0].split('.')[0]}\nТип файла: {file_name[0].split('.')[-1]}\nВага файла: {get_file_size(f'assets/temp/{fileID[0]}/{file_name[0]}')}GB\nVirusTotal: {virus_total_check(f'assets/temp/{fileID[0]}/{file_name[0]}')}')
+					if file_name and fileID:  
+					    base_name, *_, extension = file_name[0].rpartition('.')
+					    if base_name and extension:  
+					        file_path = f'assets/temp/{fileID[0]}/{file_name[0]}'
+					        file_size = get_file_size(file_path)
+					        virus_check = virus_total_check(file_path)
+					        
+					        message_text = (
+					            f'Название файла: {base_name}\n'
+					            f'Тип файла: {extension}\n'
+					            f'Вес файла: {file_size}GB\n'
+					            f'VirusTotal: {virus_check}'
+					        )
+					        await bot.send_message(message.chat.id, text=message_text)
+					    else:
+					        await bot.send_message(message.chat.id, text="Ошибка: неверный формат имени файла.")
+					else:
+					    await bot.send_message(message.chat.id, text="Ошибка: отсутствуют данные о файле.")
+
 					os.remove(f'assets/temp/{fileID[0]}/{file_name[0]}')
 					os.removedirs(f'assets/temp/{fileID[0]}')
 
