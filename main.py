@@ -378,105 +378,147 @@ def write_on_image(fileid, format_file, file_name, file_size, virus_total, image
 
 
 # До речі ідеї зі станом активності я придумав коли писав свого першого бота
-@dp.message_handler(IsPrivate(), commands=['start'], state='*')
+@dp.message_handler(IsPrivate(), commands=["start"], state="*")
 async def start_command(message: types.Message, state: FSMContext):
-	args = message.get_args()
-	bot_data = await bot.get_me()
-	bot_name = bot_data['username']
+    args = message.get_args()
+    bot_data = await bot.get_me()
+    bot_name = bot_data["username"]
 
-	if user_exist(message.chat.id) == False:
-		add_user_to_db(message.chat.id)
+    if user_exist(message.chat.id) == False:
+        add_user_to_db(message.chat.id)
 
-	if not args:
-		await bot.send_message(chat_id=message.chat.id, text=f'Вітаю тебе на нашому файлообміннику! 🌐Мене звуть {bot_name}, і я тут, щоб полегшити твій досвід обміну файлами. Безпечно, зручно та ефективно - це те, що я пропоную.', reply_markup = main_menu_buttons())
-	
-	else:
-		type_file, fileID, views, password, file_name, file_date = get_file(args)
-		if type_file is None and fileID is None:
-			await bot.send_message(chat_id=message.chat.id, text='Файл втрачено...', reply_markup = main_menu_buttons())
-			
-		else:
-#			await bot.get_file(fileID[0])
-			# file = await bot.get_file(fileID[0])
-			# await bot.download_file(file.file_path, 'file')
+    if not args:
+        await bot.send_message(
+            chat_id=message.chat.id,
+            text=f"Вітаю тебе на нашому файлообміннику! 🌐Мене звуть {bot_name}, і я тут, щоб полегшити твій досвід обміну файлами. Безпечно, зручно та ефективно - це те, що я пропоную.",
+            reply_markup=main_menu_buttons(),
+        )
 
-			if password == (None,): # Зробив лічильник відкриття файлу
-				view_updater(args)
+    else:
+        type_file, fileID, views, password, file_name, file_date = get_file(args)
+        if type_file is None and fileID is None:
+            await bot.send_message(
+                chat_id=message.chat.id,
+                text="Файл втрачено...",
+                reply_markup=main_menu_buttons(),
+            )
 
-				if type_file[0] == 'photo': # Назвав його "перегляди"
-					await bot.send_photo(chat_id=message.chat.id, photo=fileID[0], caption=f'👁 Перегляди: {int(views[0])+1}', reply_markup = main_menu_buttons())
-				
-				elif type_file[0] == 'video':
+        else:
+            # 			await bot.get_file(fileID[0])
+            # file = await bot.get_file(fileID[0])
+            # await bot.download_file(file.file_path, 'file')
 
-					await bot.send_video(chat_id=message.chat.id, video=fileID[0], caption=f'👁 Перегляди: {int(views[0])+1}', reply_markup = main_menu_buttons())
-				
-				elif type_file[0] == 'voice':
-					await bot.send_voice(chat_id=message.chat.id, voice=fileID[0], caption=f'👁 Перегляди: {int(views[0])+1}', reply_markup = main_menu_buttons())
-				
-				elif type_file[0] == 'document':
-					await bot.send_document(chat_id=message.chat.id, document=fileID[0], caption=f'👁 Перегляди: {int(views[0])+1}', reply_markup = main_menu_buttons())
-		
-			else:# Ще не зробив захист файлу паролем, але заздалегідь зроблю виняток
-#				await bot.send_message(chat_id=message.chat.id, text='Тицьніть для попереднього перегляду файлу', reply_markup = KeyboardButton.preview_button())
-#				all_types, all_ids, all_views, passwords, file_name = get_files(message.from_user.id)
-				file_info = await bot.get_file(fileID[0])
-				file_path = file_info.file_path
+            if password == (None,):  # Зробив лічильник відкриття файлу
+                view_updater(args)
 
-				if type_file[0] == 'photo': # 15.1.2025 22:26 вирішив зробити попередній перегляд файлу
-					# почав із фото, зроблю просто цензуру фотографії
-					file_save_path = f'assets/temp/{fileID[0]}.png'
-					os.makedirs(os.path.dirname(file_save_path), exist_ok=True)
+                if type_file[0] == "photo":  # Назвав його "перегляди"
+                    await bot.send_photo(
+                        chat_id=message.chat.id,
+                        photo=fileID[0],
+                        caption=f"👁 Перегляди: {int(views[0])+1}",
+                        reply_markup=main_menu_buttons(),
+                    )
 
-					await bot.send_message(message.chat.id, text='Предперегляд:')  
+                elif type_file[0] == "video":
 
-					await bot.download_file(file_path, file_save_path)
+                    await bot.send_video(
+                        chat_id=message.chat.id,
+                        video=fileID[0],
+                        caption=f"👁 Перегляди: {int(views[0])+1}",
+                        reply_markup=main_menu_buttons(),
+                    )
 
-					await blur_image(file_save_path)
+                elif type_file[0] == "voice":
+                    await bot.send_voice(
+                        chat_id=message.chat.id,
+                        voice=fileID[0],
+                        caption=f"👁 Перегляди: {int(views[0])+1}",
+                        reply_markup=main_menu_buttons(),
+                    )
 
-					with open(file_save_path, 'rb') as photo:
-						await bot.send_photo(message.chat.id, photo=photo)
+                elif type_file[0] == "document":
+                    await bot.send_document(
+                        chat_id=message.chat.id,
+                        document=fileID[0],
+                        caption=f"👁 Перегляди: {int(views[0])+1}",
+                        reply_markup=main_menu_buttons(),
+                    )
 
-					os.remove(file_save_path)
+            else:  # Ще не зробив захист файлу паролем, але заздалегідь зроблю виняток
+                # 				await bot.send_message(chat_id=message.chat.id, text='Тицьніть для попереднього перегляду файлу', reply_markup = KeyboardButton.preview_button())
+                # 				all_types, all_ids, all_views, passwords, file_name = get_files(message.from_user.id)
+                file_info = await bot.get_file(fileID[0])
+                file_path = file_info.file_path
 
+                if (
+                    type_file[0] == "photo"
+                ):  # 15.1.2025 22:26 вирішив зробити попередній перегляд файлу
+                    # почав із фото, зроблю просто цензуру фотографії
+                    file_save_path = f"assets/temp/{fileID[0]}.png"
+                    os.makedirs(os.path.dirname(file_save_path), exist_ok=True)
 
+                    await bot.send_message(message.chat.id, text="Предперегляд:")
 
-				# elif type_file[0] == 'video': # була ідея брати перший кадр, але поки що краще зроблю щось інше
-				# 	pass
+                    await bot.download_file(file_path, file_save_path)
 
-				# elif type_file[0] == 'voice':
-				#	pass
+                    await blur_image(file_save_path)
 
-				elif type_file[0] == 'document':
-					await bot.send_message(message.chat.id, text='Предперегляд:')
-					os.makedirs(f'assets/temp/{fileID[0]}')
-					await bot.download_file(file_path, f'assets/temp/{fileID[0]}/{file_name[0]}')
-#					write_on_image(fileid=fileID[0], format_file=file_name[0].spilt('.')[0], file_name=file_name[0].spilt('.')[-1], file_size=get_file_size(f'assets/temp/{fileID[0]}/{file_name[0]}'), virus_total=virus_total_check('assets/temp/{fileID[0]}/{file_name[0]}'), image_path='assets/temp/{fileID[0]}/{file_name[0]}')
-#					print(f'{fileID[0]}, {file_name[0].split('.')[0]}, {file_name[0].split('.')[-1]}, {get_file_size(f'assets/temp/{fileID[0]}/{file_name[0]}')}, {virus_total_check(f'assets/temp/{fileID[0]}/{file_name[0]}')},')
-					if file_name and fileID:  
-					    base_name, *_, extension = file_name[0].rpartition('.')
-					    if base_name and extension:  
-					        file_path = f'assets/temp/{fileID[0]}/{file_name[0]}'
-					        file_size = get_file_size(file_path)
-					        virus_check = virus_total_check(file_path)
-					        
-					        message_text = (
-					            f'Название файла: {base_name}\n'
-					            f'Тип файла: {extension}\n'
-					            f'Вес файла: {file_size}GB\n'
-					            f'VirusTotal: {virus_check}'
-					        )
-					        await bot.send_message(message.chat.id, text=message_text)
-					    else:
-					        await bot.send_message(message.chat.id, text="Ошибка: неверный формат имени файла.")
-					else:
-					    await bot.send_message(message.chat.id, text="Ошибка: отсутствуют данные о файле.")
+                    with open(file_save_path, "rb") as photo:
+                        await bot.send_photo(message.chat.id, photo=photo)
 
-					os.remove(f'assets/temp/{fileID[0]}/{file_name[0]}')
-					os.removedirs(f'assets/temp/{fileID[0]}')
+                    os.remove(file_save_path)
 
-				await bot.send_message(message.chat.id, text='Файл захищений паролем🔒, для доступу до файлу введіть пароль:', reply_markup = back_button())# Скористаюся тим, що поле пароля не порожнє поле, і не буду паритися, все таки залишу, НЕ БАГ А ФІЧА
-				await state.update_data(check_password=args) # Ось, до речі, приклад статусу активності 
-				await action.check_password.set() 
+                # elif type_file[0] == 'video': # була ідея брати перший кадр, але поки що краще зроблю щось інше
+                # 	pass
+
+                # elif type_file[0] == 'voice':
+                # 	pass
+
+                elif type_file[0] == "document":
+                    await bot.send_message(message.chat.id, text="Предперегляд:")
+                    os.makedirs(f"assets/temp/{fileID[0]}")
+                    await bot.download_file(
+                        file_path, f"assets/temp/{fileID[0]}/{file_name[0]}"
+                    )
+                    # 					write_on_image(fileid=fileID[0], format_file=file_name[0].spilt('.')[0], file_name=file_name[0].spilt('.')[-1], file_size=get_file_size(f'assets/temp/{fileID[0]}/{file_name[0]}'), virus_total=virus_total_check('assets/temp/{fileID[0]}/{file_name[0]}'), image_path='assets/temp/{fileID[0]}/{file_name[0]}')
+                    # 					print(f'{fileID[0]}, {file_name[0].split('.')[0]}, {file_name[0].split('.')[-1]}, {get_file_size(f'assets/temp/{fileID[0]}/{file_name[0]}')}, {virus_total_check(f'assets/temp/{fileID[0]}/{file_name[0]}')},')
+                    if file_name and fileID:
+                        base_name, *_, extension = file_name[0].rpartition(".")
+                        if base_name and extension:
+                            file_path = f"assets/temp/{fileID[0]}/{file_name[0]}"
+                            file_size = get_file_size(file_path)
+                            virus_check = virus_total_check(file_path)
+
+                            message_text = (
+                                f"Название файла: {base_name}\n"
+                                f"Тип файла: {extension}\n"
+                                f"Вес файла: {file_size}GB\n"
+                                f"VirusTotal: {virus_check}"
+                            )
+                            await bot.send_message(message.chat.id, text=message_text)
+                        else:
+                            await bot.send_message(
+                                message.chat.id,
+                                text="Ошибка: неверный формат имени файла.",
+                            )
+                    else:
+                        await bot.send_message(
+                            message.chat.id, text="Ошибка: отсутствуют данные о файле."
+                        )
+
+                    os.remove(f"assets/temp/{fileID[0]}/{file_name[0]}")
+                    os.removedirs(f"assets/temp/{fileID[0]}")
+
+                await bot.send_message(
+                    message.chat.id,
+                    text="Файл захищений паролем🔒, для доступу до файлу введіть пароль:",
+                    reply_markup=back_button(),
+                )  # Скористаюся тим, що поле пароля не порожнє поле, і не буду паритися, все таки залишу, НЕ БАГ А ФІЧА
+                await state.update_data(
+                    check_password=args
+                )  # Ось, до речі, приклад статусу активності
+                await action.check_password.set()
+
 
 		# if not args: # Уже шкодую, що на python пишу, через те що відвик до табуляції
 		# 	await bot.send_message(chat_id=message.chat.id, text=f'Вітаю тебе на нашому файлообміннику! 🌐Мене звуть {bot_name}, і я тут, щоб полегшити твій досвід обміну файлами. Безпечно, зручно та ефективно - це те, що я пропоную.', reply_markup = main_menu_buttons())
