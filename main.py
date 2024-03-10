@@ -1,5 +1,4 @@
 import hashlib
-
 from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.utils import executor
@@ -8,6 +7,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.dispatcher.filters import BoundFilter
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from string import ascii_letters, digits
+import configparser
 import randoms
 import os
 import sqlite3
@@ -23,10 +23,13 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 import base64
+import random
 
-ADMIN_ID = 1849893126
-TOKEN = "6008102574:AAF1DCefu2QwKvqi4NEFDKBwhEDMbgW8veU"
+config = configparser.ConfigParser()
+config.read('config.ini')
 
+ADMIN_ID = config['Bot']['admin_id']
+TOKEN = config['Bot']['token']
 
 def hash_password(password):
     sha256 = hashlib.sha256()
@@ -47,14 +50,10 @@ def generate_key(password):
     key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
     return key
 
-
-
-
-
 def encrypt_file_info(file_info, password):
     key = generate_key(password)
 
-    iv = os.urandom(16)  # Генерация случайного вектора инициализации
+    iv = os.urandom(16)
     cipher = Cipher(algorithms.AES(key), modes.CFB8(iv), backend=default_backend())
     encryptor = cipher.encryptor()
 
@@ -68,12 +67,10 @@ def decrypt_file_info(encrypted_data, password):
     if isinstance(encrypted_data, tuple):
         encrypted_data = encrypted_data[0]
 
-    # Extract IV and encrypted data
-    iv_and_data = base64.urlsafe_b64decode(encrypted_data[:32])  # Assuming a 16-byte IV encoded in base64
+    iv_and_data = base64.urlsafe_b64decode(encrypted_data[:32])
     iv = iv_and_data[:16]
     encrypted_data = iv_and_data[16:]
 
-    # Ensure that the IV size is correct
     if len(iv) != 16:
         raise ValueError(f'Invalid IV size ({len(iv)}) for CFB8.')
 
@@ -143,7 +140,7 @@ def add_new_file(user_id, type, code, file_id, file_name, file_date):
 def add_new_pass_file(user_id, type, code, file_id, password, file_name, file_date):
     db = sqlite3.connect("data.db", check_same_thread=False)
     cursor = db.cursor()
-    data = [user_id, type, code, file_id, password, file_name, file_date, None]  # Include 'None' for 'fire_date'
+    data = [user_id, type, code, file_id, password, file_name, file_date, None] 
     cursor.execute(
         "INSERT INTO files(user_id, type, code, file_id, password, file_name, file_date, fire_date) VALUES(?,?,?,?,?,?,?,?)",
         data)
@@ -597,9 +594,14 @@ async def create_post(message: types.Message):
         else:
             file_message = ""
             for i, id_file in enumerate(all_ids):
+                if(passwords[i][0] == None):
+                    passwd = False
+                else: 
+                    passwd = True
+
                 file_message += (
                     f"{i + 1} | https://t.me/{bot_name}?start={id_file[0]} | \n"
-                    f"📁 {file_name[i][0]} | 👁 {all_views[i][0]} |⏲{fire_date[i][0]} |🔒{passwords[i][0]}\n"
+                    f"📁 {file_name[i][0]} | 👁 {all_views[i][0]} |⏲{fire_date[i][0]} |🔒{passwd}\n"
                 )
 
             await bot.send_message(chat_id=message.chat.id, text=file_message, reply_markup=main_delete_button())
@@ -867,9 +869,13 @@ async def handler_call(call: types.CallbackQuery, state: FSMContext):
         else:
 
             for i, id_file in enumerate(all_ids):
-                file_message = (
-                    f"{i + 1} | https://t.me/{str(bot_name)}?start={id_file[0]} \n"
-                    f"📁 {file_name[i][0]}👁 {all_views[i][0]} | 🔒{passwords[i][0]}"
+                if(passwords[i][0] == None):
+                    passwd = False
+                else: passwd = True
+
+                file_message += (
+                    f"{i + 1} | https://t.me/{bot_name}?start={id_file[0]} | \n"
+                    f"📁 {file_name[i][0]} | 👁 {all_views[i][0]} |⏲{fire_date[i][0]} |🔒{passwd}\n"
                 )
 
             await bot.send_message(chat_id=chat_id, text=file_message, reply_markup=main_delete_button())
